@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::time::Duration;
 
 use color_eyre::Result;
@@ -14,12 +15,25 @@ use ratatui::{
     widgets::Block,
 };
 
+#[repr(i32)] // representavel como i32
+#[derive(PartialEq, Eq, Clone, Copy)] // necessario para comparação com inteiros
 enum Tabs {
-    Conversor,
-    Trace,
-    Quiz,
-    Batch,
-    Max,
+    Conversor = 1,
+    Trace = 2,
+    Quiz = 3,
+    Batch = 4,
+    Max = 5,
+}
+
+// para incializar com zero
+#[derive(Default)]
+struct TraceState {
+    valor: u64,
+    base_origem: u8,
+    base_destino: u8,
+    etapa_atual: usize,
+    passos: Vec<(u64, u64, u8)>,
+    bits: Vec<u8>,
 }
 
 struct App {
@@ -99,46 +113,40 @@ fn draw(frame: &mut Frame, app: &App) {
     let right_inner = middle_block_right.inner(inner_layout[1]);
     let bottom_inner = bottom_right_block.inner(outer_layout[2]);
 
+    frame.render_widget(&middle_block_left, inner_layout[0]);
+    frame.render_widget(&middle_block_right, inner_layout[1]);
+
     // menu em cima
     draw_tabs(frame, up_inner, app.tab);
 
     // aba do meio
     match app.tab {
-        Tabs::Conversor => draw_conversor(
-            frame,
-            middle_block_left,
-            middle_block_right,
-            left_inner,
-            right_inner,
-        ),
-        Tabs::Trace => draw_trace(
-            frame,
-            middle_block_left,
-            middle_block_right,
-            left_inner,
-            right_inner,
-        ),
-        Tabs::Quiz => draw_quiz(
-            frame,
-            middle_block_left,
-            middle_block_right,
-            left_inner,
-            right_inner,
-        ),
-        Tabs::Batch => draw_batch(
-            frame,
-            middle_block_left,
-            middle_block_right,
-            left_inner,
-            right_inner,
-        ),
-        Tabs::Max => draw_max(
-            frame,
-            middle_block_right,
-            middle_block_left,
-            left_inner,
-            right_inner,
-        ),
+        Tabs::Conversor => draw_conversor(frame, left_inner, right_inner),
+        Tabs::Trace => {
+            let tracestate = TraceState::default();
+            draw_trace(frame, left_inner, right_inner, &tracestate)
+        }
+        //Tabs::Quiz => draw_quiz(
+        //    frame,
+        //    middle_block_left,
+        //    middle_block_right,
+        //    left_inner,
+        //    right_inner,
+        //),
+        //Tabs::Batch => draw_batch(
+        //    frame,
+        //    middle_block_left,
+        //    middle_block_right,
+        //    left_inner,
+        //    right_inner,
+        //),
+        //Tabs::Max => draw_max(
+        //    frame,
+        //    middle_block_right,
+        //    middle_block_left,
+        //    left_inner,
+        //    right_inner,
+        //),
         _ => {}
     }
 
@@ -155,11 +163,11 @@ fn draw_tabs(frame: &mut Frame, area: Rect, active_tab: Tabs) {
         (5, "max"),
     ];
     let mut spans: Vec<Span> = Vec::new();
-    let active_tab_int: i32 = active_tab as i32;
     for (num, mode) in tabs {
         let label = format!("[{}] {}", num, mode);
         let style;
-        if num == active_tab_int {
+        // copia do enum
+        if num == active_tab as i32 {
             style = Style::default().add_modifier(Modifier::REVERSED);
         } else {
             style = Style::default().fg(Color::DarkGray);
@@ -175,26 +183,15 @@ fn draw_tabs(frame: &mut Frame, area: Rect, active_tab: Tabs) {
 fn draw_statusbar(frame: &mut Frame, bottom_inner: Rect) {
     // rodapé
     let info = Paragraph::new(Line::from(vec![
-        Span::styled("status: ", Style::default().fg(Color::DarkGray)),
-        Span::styled("OK", Style::default().fg(Color::LightGreen)),
-        Span::raw("  │  modo: conversor  │  histórico: 3"),
+        Span::raw(" Carlos Vinícius Teixeira de Souza │  Introdução à Computação  │  João Vitor Pereira Gomes "),
     ]))
     .alignment(Alignment::Center)
-    .style(Style::default().fg(Color::DarkGray));
+    .style(Style::default().fg(Color::LightRed));
     frame.render_widget(info, bottom_inner);
 }
 
-fn draw_conversor(
-    frame: &mut Frame,
-    middle_block_left: Block,
-    middle_block_right: Block,
-    left_inner: Rect,
-    right_inner: Rect,
-) {
+fn draw_conversor(frame: &mut Frame, left_inner: Rect, right_inner: Rect) {
     // display
-    frame.render_widget(middle_block_left, left_inner);
-    frame.render_widget(middle_block_right, right_inner);
-
     // input
     let input = Paragraph::new(vec![
         Line::from(vec![
@@ -224,4 +221,105 @@ fn draw_conversor(
     frame.render_widget(input, left_inner);
     // output
     // TODO
+}
+
+// TODO alterar para uma lógica de verdade e não hardcoded
+fn draw_trace(frame: &mut Frame, left_inner: Rect, right_inner: Rect, tracestate: &TraceState) {
+    let left = Paragraph::new(vec![
+        Line::from(Span::styled(
+            "42 ÷ 2 = 21  r 0",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(Span::styled(
+            "21 ÷ 2 = 10  r 1",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(vec![
+            Span::styled("10 ÷ 2 =  5  r ", Style::default().fg(Color::DarkGray)),
+            Span::styled("0", Style::default().fg(Color::LightMagenta)),
+            Span::styled("  ←", Style::default().fg(Color::LightCyan)),
+        ]),
+        Line::from(Span::styled(
+            " 5 ÷ 2 =  ?  r ?",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
+        )),
+        Line::from(Span::styled(
+            " 2 ÷ 2 =  ?  r ?",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
+        )),
+        Line::from(Span::styled(
+            " 1 ÷ 2 =  ?  r ?",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "[←] anterior  [→] próxima  [r] reiniciar",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ]);
+
+    let right = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled("pos:  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                " 5   4   3   2   1   0",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("      ", Style::default().fg(Color::DarkGray)),
+            Span::styled("[1] ", Style::default().fg(Color::LightGreen)),
+            Span::styled("[0] ", Style::default().fg(Color::DarkGray)),
+            Span::styled("[1] ", Style::default().fg(Color::LightGreen)),
+            Span::styled(
+                "[?] ",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
+            ),
+            Span::styled(
+                "[?] ",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
+            ),
+            Span::styled(
+                "[?] ",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "somatório posicional:",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(vec![
+            Span::styled("1×2⁵", Style::default().fg(Color::LightGreen)),
+            Span::styled(" + ", Style::default().fg(Color::DarkGray)),
+            Span::styled("0×2⁴", Style::default().fg(Color::DarkGray)),
+            Span::styled(" + ", Style::default().fg(Color::DarkGray)),
+            Span::styled("1×2³", Style::default().fg(Color::LightGreen)),
+            Span::styled(" + ...", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![Span::styled(
+            "= 32 + 0 + 8 + ...",
+            Style::default().fg(Color::DarkGray),
+        )]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "etapa: 3 / 6",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ]);
+
+    frame.render_widget(left, left_inner);
+    frame.render_widget(right, right_inner);
 }
