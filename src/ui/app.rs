@@ -1,6 +1,3 @@
-use std::ops::Deref;
-use std::time::Duration;
-
 use color_eyre::Result;
 use ratatui::crossterm::event::{self, Event, KeyCode};
 use ratatui::layout::{Alignment, Position};
