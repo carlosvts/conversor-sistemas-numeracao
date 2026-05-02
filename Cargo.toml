@@ -2,5 +2,13 @@
 name = "conversor-sistemas-numeracao"
 version = "0.1.0"
 edition = "2024"
+authors = ["Carlos Vinícius Teixeira de Souza <carlos.souza9@estudante.ufla.br>", "João Vitor Pereira Gomes <joao.gomes7@estudante.ufla.br>"]
 
 [dependencies]
+ratatui = "0.30.0"
+crossterm = "0.29.0"
+color-eyre = "0.6.3"
+
+[[bin]]
+name = "ui-debug"
+path = "src/ui/app.rs"
