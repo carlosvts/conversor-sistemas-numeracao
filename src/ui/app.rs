@@ -1,8 +1,7 @@
 use std::time::Duration;
 
 use color_eyre::Result;
-use crossterm::cursor::position;
-use ratatui::crossterm::event::{self, Event};
+use ratatui::crossterm::event::{self, Event, KeyCode};
 use ratatui::layout::{Alignment, Position};
 use ratatui::widgets::Paragraph;
 use ratatui::{
@@ -14,29 +13,60 @@ use ratatui::{
     widgets::Block,
 };
 
-fn main() -> Result<()> {
-    color_eyre::install()?;
-    let terminal = ratatui::init();
-    let result = run(terminal);
-    ratatui::restore();
-    result
+enum Tabs {
+    Conversor,
+    Trace,
+    Quiz,
+    Batch,
+    Max,
 }
 
-fn run(mut terminal: DefaultTerminal) -> Result<()> {
-    loop {
-        terminal.draw(draw)?;
-        if key_pressed()? {
-            return Ok(());
+struct App {
+    tab: Tabs,
+}
+
+impl App {
+    fn new() -> Self {
+        Self {
+            tab: Tabs::Conversor,
         }
     }
 }
 
-// sair da ui
-fn key_pressed() -> Result<bool> {
-    Ok(event::poll(Duration::from_millis(16))? && matches!(event::read()?, Event::Key(_)))
+fn main() -> Result<()> {
+    color_eyre::install()?;
+    let mut terminal: DefaultTerminal = ratatui::init();
+    let mut app = App::new();
+    loop {
+        terminal.draw(|frame| draw(frame, &app))?;
+
+        if let Event::Key(key) = event::read()? {
+            match key.code {
+                KeyCode::Char('1') => app.tab = Tabs::Conversor,
+                KeyCode::Char('2') => app.tab = Tabs::Trace,
+                KeyCode::Char('3') => app.tab = Tabs::Quiz,
+                KeyCode::Char('4') => app.tab = Tabs::Batch,
+                KeyCode::Char('5') => app.tab = Tabs::Max,
+                KeyCode::Char('q') => break,
+                _ => {}
+            }
+        }
+    }
+    ratatui::restore();
+    Ok(()) // "return 0"
 }
 
-fn draw(frame: &mut Frame) {
+fn draw(frame: &mut Frame, app: &App) {
+    match app.tab {
+        Tabs::Conversor => draw_conversor(frame),
+        Tabs::Trace => draw_conversor(frame),
+        Tabs::Quiz => draw_conversor(frame),
+        Tabs::Batch => draw_conversor(frame),
+        Tabs::Max => draw_conversor(frame),
+    }
+}
+
+fn draw_conversor(frame: &mut Frame) {
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
