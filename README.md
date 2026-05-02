@@ -6,7 +6,7 @@ Professor: Rafael Seraphilha Durelli
 
 Departamento de Ciência da Computação da UFLA - Introdução à Computação
 
-Tecnologias utilizadas: Rust, (Ratatui)[https://ratatui.rs/] 
+Tecnologias utilizadas: Rust, [Ratatui](https://ratatui.rs/) 
 
 ## Divisao de Responsabilidades: Projeto Conversor de Bases
 
