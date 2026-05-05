@@ -1,67 +1,322 @@
-use std::time::Duration;
-
 use color_eyre::Result;
-use ratatui::crossterm::event::{self, Event};
+use ratatui::crossterm::event::{self, Event, KeyCode};
+use ratatui::layout::{Alignment, Position};
+use ratatui::style::Modifier;
+use ratatui::widgets::Paragraph;
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout, Spacing},
+    layout::{Constraint, Direction, Layout, Rect, Spacing},
     style::{Color, Style},
     symbols::merge::MergeStrategy,
+    text::{Line, Span},
     widgets::Block,
 };
 
-fn main() -> Result<()> {
-    color_eyre::install()?;
-    let terminal = ratatui::init();
-    let result = run(terminal);
-    ratatui::restore();
-    result
+#[repr(i32)] // representavel como i32
+#[derive(PartialEq, Eq, Clone, Copy)] // necessario para comparação com inteiros
+enum Tabs {
+    Conversor = 1,
+    Trace = 2,
+    Quiz = 3,
+    Batch = 4,
+    Max = 5,
 }
 
-fn run(mut terminal: DefaultTerminal) -> Result<()> {
-    loop {
-        terminal.draw(draw)?;
-        if key_pressed()? {
-            return Ok(());
+// para incializar com zero
+#[derive(Default)]
+struct TraceState {
+    valor: u64,
+    base_origem: u8,
+    base_destino: u8,
+    etapa_atual: usize,
+    passos: Vec<(u64, u64, u8)>,
+    bits: Vec<u8>,
+}
+
+struct App {
+    tab: Tabs,
+}
+
+impl App {
+    fn new() -> Self {
+        Self {
+            tab: Tabs::Conversor,
         }
     }
 }
 
-// sair da ui
-fn key_pressed() -> Result<bool> {
-    Ok(event::poll(Duration::from_millis(16))? && matches!(event::read()?, Event::Key(_)))
+fn main() -> Result<()> {
+    color_eyre::install()?;
+    let mut terminal: DefaultTerminal = ratatui::init();
+    let mut app = App::new();
+    loop {
+        terminal.draw(|frame| draw(frame, &app))?;
+
+        if let Event::Key(key) = event::read()? {
+            match key.code {
+                KeyCode::Char('1') => app.tab = Tabs::Conversor,
+                KeyCode::Char('2') => app.tab = Tabs::Trace,
+                KeyCode::Char('3') => app.tab = Tabs::Quiz,
+                KeyCode::Char('4') => app.tab = Tabs::Batch,
+                KeyCode::Char('5') => app.tab = Tabs::Max,
+                KeyCode::Char('q') => break,
+                _ => {}
+            }
+        }
+    }
+    ratatui::restore();
+    Ok(()) // "return 0"
 }
 
-fn draw(frame: &mut Frame) {
-    // espaçamentos
-    // dois retangulos da direita
-    let [left, right] = Layout::horizontal([Constraint::Fill(1); 2])
+fn draw(frame: &mut Frame, app: &App) {
+    let outer_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(vec![
+            Constraint::Percentage(5),
+            Constraint::Fill(1),
+            Constraint::Percentage(5),
+        ])
         .spacing(Spacing::Overlap(1))
-        .areas(frame.area());
+        .split(frame.area());
 
-    // retangulo da esquerda
-    let [top_right, bottom_right] = Layout::vertical([Constraint::Fill(1); 2])
-        .spacing(Spacing::Overlap(1))
-        .areas(right);
+    let inner_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(outer_layout[1]);
 
     // blocos
-    let left_block = Block::bordered()
-        .title("Traceback")
+    let up_block = Block::bordered()
+        .title("CONVERSOR UNIVERSAL DE BASES")
         .border_style(Style::default().fg(Color::LightRed))
         .merge_borders(MergeStrategy::Exact);
 
-    let top_right_block = Block::bordered()
-        .title("Resultado")
+    let middle_block_left = Block::bordered()
+        .title("ENTRADA")
+        .border_style(Style::default().fg(Color::LightYellow))
+        .merge_borders(MergeStrategy::Exact);
+
+    let middle_block_right = Block::bordered()
+        .title("SAIDA")
         .border_style(Style::default().fg(Color::LightGreen))
         .merge_borders(MergeStrategy::Exact);
 
     let bottom_right_block = Block::bordered()
-        .title("Input")
+        .title("Info")
         .border_style(Style::default().fg(Color::LightBlue))
         .merge_borders(MergeStrategy::Exact);
 
+    let up_inner = up_block.inner(outer_layout[0]);
+    let left_inner = middle_block_left.inner(inner_layout[0]);
+    let right_inner = middle_block_right.inner(inner_layout[1]);
+    let bottom_inner = bottom_right_block.inner(outer_layout[2]);
+
+    frame.render_widget(&middle_block_left, inner_layout[0]);
+    frame.render_widget(&middle_block_right, inner_layout[1]);
+
+    // menu em cima
+    draw_tabs(frame, up_inner, app.tab);
+
+    // aba do meio
+    match app.tab {
+        Tabs::Conversor => draw_conversor(frame, left_inner, right_inner),
+        Tabs::Trace => {
+            let tracestate = TraceState::default();
+            draw_trace(frame, left_inner, right_inner, &tracestate)
+        }
+        //Tabs::Quiz => draw_quiz(
+        //    frame,
+        //    middle_block_left,
+        //    middle_block_right,
+        //    left_inner,
+        //    right_inner,
+        //),
+        //Tabs::Batch => draw_batch(
+        //    frame,
+        //    middle_block_left,
+        //    middle_block_right,
+        //    left_inner,
+        //    right_inner,
+        //),
+        //Tabs::Max => draw_max(
+        //    frame,
+        //    middle_block_right,
+        //    middle_block_left,
+        //    left_inner,
+        //    right_inner,
+        //),
+        _ => {}
+    }
+
+    // menu de baixo
+    draw_statusbar(frame, bottom_inner);
+}
+
+fn draw_tabs(frame: &mut Frame, area: Rect, active_tab: Tabs) {
+    let tabs = vec![
+        (1, "conversor"),
+        (2, "trace"),
+        (3, "quiz"),
+        (4, "batch"),
+        (5, "max"),
+    ];
+    let mut spans: Vec<Span> = Vec::new();
+    for (num, mode) in tabs {
+        let label = format!("[{}] {}", num, mode);
+        let style;
+        // copia do enum
+        if num == active_tab as i32 {
+            style = Style::default().add_modifier(Modifier::REVERSED);
+        } else {
+            style = Style::default().fg(Color::DarkGray);
+        }
+        spans.push(Span::styled(format!(" {} ", label), style));
+        spans.push(Span::raw("  "));
+    }
+
+    let line = Paragraph::new(Line::from(spans)).alignment(Alignment::Center);
+    frame.render_widget(line, area);
+}
+
+fn draw_statusbar(frame: &mut Frame, bottom_inner: Rect) {
+    // rodapé
+    let info = Paragraph::new(Line::from(vec![
+        Span::raw(" Carlos Vinícius Teixeira de Souza │  Introdução à Computação  │  João Vitor Pereira Gomes "),
+    ]))
+    .alignment(Alignment::Center)
+    .style(Style::default().fg(Color::LightRed));
+    frame.render_widget(info, bottom_inner);
+}
+
+fn draw_conversor(frame: &mut Frame, left_inner: Rect, right_inner: Rect) {
     // display
-    frame.render_widget(left_block, left);
-    frame.render_widget(top_right_block, top_right);
-    frame.render_widget(bottom_right_block, bottom_right);
+    // input
+    let input = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled("Valor : ", Style::default().fg(Color::DarkGray)),
+            Span::styled("42", Style::default().fg(Color::White)),
+            Span::styled("█", Style::default().fg(Color::LightYellow)), // cursor
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("De    : ", Style::default().fg(Color::DarkGray)),
+            Span::styled("[DEC]", Style::default().fg(Color::LightYellow)),
+        ]),
+        Line::from(vec![
+            Span::styled("Para  : ", Style::default().fg(Color::DarkGray)),
+            Span::styled("[BIN]", Style::default().fg(Color::LightYellow)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "[enter] converter",
+            Style::default().fg(Color::LightGreen),
+        )),
+        Line::from(Span::styled(
+            "[s] passo a passo",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ]);
+    frame.render_widget(input, left_inner);
+    // output
+    // TODO
+}
+
+// TODO alterar para uma lógica de verdade e não hardcoded
+fn draw_trace(frame: &mut Frame, left_inner: Rect, right_inner: Rect, tracestate: &TraceState) {
+    let left = Paragraph::new(vec![
+        Line::from(Span::styled(
+            "42 ÷ 2 = 21  r 0",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(Span::styled(
+            "21 ÷ 2 = 10  r 1",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(vec![
+            Span::styled("10 ÷ 2 =  5  r ", Style::default().fg(Color::DarkGray)),
+            Span::styled("0", Style::default().fg(Color::LightMagenta)),
+            Span::styled("  ←", Style::default().fg(Color::LightCyan)),
+        ]),
+        Line::from(Span::styled(
+            " 5 ÷ 2 =  ?  r ?",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
+        )),
+        Line::from(Span::styled(
+            " 2 ÷ 2 =  ?  r ?",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
+        )),
+        Line::from(Span::styled(
+            " 1 ÷ 2 =  ?  r ?",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "[←] anterior  [→] próxima  [r] reiniciar",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ]);
+
+    let right = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled("pos:  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                " 5   4   3   2   1   0",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("      ", Style::default().fg(Color::DarkGray)),
+            Span::styled("[1] ", Style::default().fg(Color::LightGreen)),
+            Span::styled("[0] ", Style::default().fg(Color::DarkGray)),
+            Span::styled("[1] ", Style::default().fg(Color::LightGreen)),
+            Span::styled(
+                "[?] ",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
+            ),
+            Span::styled(
+                "[?] ",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
+            ),
+            Span::styled(
+                "[?] ",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "somatório posicional:",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(vec![
+            Span::styled("1×2⁵", Style::default().fg(Color::LightGreen)),
+            Span::styled(" + ", Style::default().fg(Color::DarkGray)),
+            Span::styled("0×2⁴", Style::default().fg(Color::DarkGray)),
+            Span::styled(" + ", Style::default().fg(Color::DarkGray)),
+            Span::styled("1×2³", Style::default().fg(Color::LightGreen)),
+            Span::styled(" + ...", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![Span::styled(
+            "= 32 + 0 + 8 + ...",
+            Style::default().fg(Color::DarkGray),
+        )]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "etapa: 3 / 6",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ]);
+
+    frame.render_widget(left, left_inner);
+    frame.render_widget(right, right_inner);
 }
