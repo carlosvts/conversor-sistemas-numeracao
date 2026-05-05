@@ -8,7 +8,12 @@ authors = ["Carlos Vinícius Teixeira de Souza <carlos.souza9@estudante.ufla.br>
 ratatui = "0.30.0"
 crossterm = "0.29.0"
 color-eyre = "0.6.3"
+csv = "1.4.0"
 
 [[bin]]
 name = "ui-debug"
 path = "src/ui/app.rs"
+
+[[bin]]
+name = "core-debug"
+path = "src/core/core.rs"
