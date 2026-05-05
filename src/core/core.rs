@@ -13,8 +13,17 @@ fn from_csv(path: String) -> Result<Reader<File>, csv::Error> {
     Ok(reader)
 }
 
+// Função calcula o máximo de um sistema de certa base e de certa qtd de digitos
+fn maximum(base: u32, num_digits: u32) -> String {
+    let max = base.pow(num_digits) - 1;
+    let suffix = format!("{base}^{num_digits} - 1 = ");
+    let response = suffix + &max.to_string();
+    response
+}
+
 // daqui poderiamos, por exemplo, criar outras funcoes etc,
 
 fn main() {
-    println!("Hello World!");
+    // debug
+    println!("{}", maximum(2, 3));
 }
