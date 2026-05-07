@@ -56,6 +56,60 @@ fn bin_to_oct(bin: String) -> String {
     oct.chars().rev().collect()
 }
 
+fn oct_to_bin(oct: String) -> String {
+    let mut bin = String::new();
+    let mut buffer: u32 = 0;
+    let mut total_bits = 0;
+
+    for c in oct.bytes() {
+        let result = c - b'0';
+        buffer <<= 3;
+        buffer |= result as u32;
+        total_bits += 3;
+    }
+
+    for i in (0..total_bits).rev() {
+        let bit = (buffer >> i) & 1;
+
+        match bit {
+            1 => bin.push('1'),
+            0 => bin.push('0'),
+            _ => bin.push('X'),
+        };
+    }
+    bin
+}
+
+fn hex_to_bin(hex: String) -> String {
+    let mut bin = String::new();
+
+    let mut hex_to_bin: HashMap<char, &str> = HashMap::new();
+    hex_to_bin.insert('0', "0000");
+    hex_to_bin.insert('1', "0001");
+    hex_to_bin.insert('2', "0010");
+    hex_to_bin.insert('3', "0011");
+    hex_to_bin.insert('4', "0100");
+    hex_to_bin.insert('5', "0101");
+    hex_to_bin.insert('6', "0110");
+    hex_to_bin.insert('7', "0111");
+    hex_to_bin.insert('8', "1000");
+    hex_to_bin.insert('9', "1001");
+    hex_to_bin.insert('A', "1010");
+    hex_to_bin.insert('B', "1011");
+    hex_to_bin.insert('C', "1100");
+    hex_to_bin.insert('D', "1101");
+    hex_to_bin.insert('E', "1110");
+    hex_to_bin.insert('F', "1111");
+
+    for c in hex.chars() {
+        match hex_to_bin.get(&c) {
+            Some(value) => bin.push_str(value),
+            None => (),
+        }
+    }
+    bin
+}
+
 fn bin_to_hex(mut bin: String) -> String {
     let mut hex: String = String::new();
     let mut chunks: Vec<String> = Vec::new(); // guarda os grupos de binario 
@@ -128,9 +182,9 @@ fn bin_to_hex(mut bin: String) -> String {
 }
 
 fn main() {
-    // debug
     println!("maximum: {}", maximum(2, 3));
-    // 12 em binario é 1100 --> octal vira 14, tudo certo
     println!("bin_to_oct: {}", bin_to_oct("1100".to_string()));
     println!("bin_to_hex: {}", bin_to_hex("111111111".to_string()));
+    println!("oct_to_bin: {}", oct_to_bin("717".to_string()));
+    println!("hex_to_bin: {}", hex_to_bin("FA".to_string()));
 }
