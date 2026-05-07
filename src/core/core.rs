@@ -3,8 +3,11 @@
 // Para rodar somente esse código como forma de debug, só usar
 // cargo run -bin --core-debug
 
+use core::num;
 use crossterm::style::Stylize;
 use csv::Reader;
+// para ler csv
+use std::collections::HashMap; // para mapear hex
 use std::fs::File; //std filestream file 
 
 // Recebe um path de arquivo, retorna um reader de CSV (um iterador)
@@ -53,11 +56,81 @@ fn bin_to_oct(bin: String) -> String {
     oct.chars().rev().collect()
 }
 
-// daqui poderiamos, por exemplo, criar outras funcoes etc,
+fn bin_to_hex(mut bin: String) -> String {
+    let mut hex: String = String::new();
+    let mut chunks: Vec<String> = Vec::new(); // guarda os grupos de binario 
+    let mut bin_to_hex: HashMap<String, &str> = HashMap::new();
+    bin_to_hex.insert("0000".to_string(), "0");
+    bin_to_hex.insert("0001".to_string(), "1");
+    bin_to_hex.insert("0010".to_string(), "2");
+    bin_to_hex.insert("0011".to_string(), "3");
+    bin_to_hex.insert("0100".to_string(), "4");
+    bin_to_hex.insert("0101".to_string(), "5");
+    bin_to_hex.insert("0110".to_string(), "6");
+    bin_to_hex.insert("0111".to_string(), "7");
+    bin_to_hex.insert("1000".to_string(), "8");
+    bin_to_hex.insert("1001".to_string(), "9");
+    bin_to_hex.insert("1010".to_string(), "A");
+    bin_to_hex.insert("1011".to_string(), "B");
+    bin_to_hex.insert("1100".to_string(), "C");
+    bin_to_hex.insert("1101".to_string(), "D");
+    bin_to_hex.insert("1110".to_string(), "E");
+    bin_to_hex.insert("1111".to_string(), "F");
+    let mut count: u16 = 0;
+    //println!("bin recebido: {}", bin);
+    // padding para 16 bits
+    // adiciona um padding
+    let binary_lenght = bin.chars().count();
+    if binary_lenght < 8 {
+        let num_padding = 8 - binary_lenght;
+        //println!("num_padding {}", num_padding);
+        for _ in 0..num_padding {
+            bin.insert(0, '0');
+        }
+    }
+    //println!("bin com padding {}", bin);
+
+    for b in bin.chars() {
+        hex.push(b);
+        count += 1;
+        if count == 4 {
+            chunks.push(hex.clone());
+            hex.clear();
+            count = 0;
+        }
+    }
+
+    if hex.len() >= 1 {
+        chunks.push(hex.clone());
+    }
+    // limpa o buffer do hex
+    hex.clear();
+
+    for chunk in chunks.iter_mut().rev() {
+        // adiciona um padding
+        if chunk.len() < 4 {
+            let num_padding = 4 - chunk.len();
+            //println!("num_padding {}", num_padding);
+            for _ in 0..num_padding {
+                chunk.insert(0, '0');
+                //println!("chunk padding --> {}", chunk);
+            }
+        }
+        //println!("chunk {}", chunk);
+        match bin_to_hex.get(chunk) {
+            Some(value) => hex.push_str(value),
+            None => (),
+        }
+    }
+
+    //println!("hex: {}", hex);
+    hex
+}
 
 fn main() {
     // debug
-    println!("{}", maximum(2, 3));
+    println!("maximum: {}", maximum(2, 3));
     // 12 em binario é 1100 --> octal vira 14, tudo certo
-    println!("{}", bin_to_oct("1100".to_string()));
+    println!("bin_to_oct: {}", bin_to_oct("1100".to_string()));
+    println!("bin_to_hex: {}", bin_to_hex("111111111".to_string()));
 }
