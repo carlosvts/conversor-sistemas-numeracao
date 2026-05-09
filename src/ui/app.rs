@@ -24,6 +24,7 @@ enum Tabs {
 
 // para incializar com zero
 #[derive(Default)]
+#[warn(dead_code)]
 struct TraceState {
     valor: u64,
     base_origem: u8,
@@ -72,9 +73,9 @@ fn draw(frame: &mut Frame, app: &App) {
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(vec![
-            Constraint::Percentage(5),
+            Constraint::Length(5),
             Constraint::Fill(1),
-            Constraint::Percentage(5),
+            Constraint::Length(3),
         ])
         .spacing(Spacing::Overlap(1))
         .split(frame.area());
@@ -86,17 +87,17 @@ fn draw(frame: &mut Frame, app: &App) {
 
     // blocos
     let up_block = Block::bordered()
-        .title("CONVERSOR UNIVERSAL DE BASES")
+        .title("   CONVERSOR UNIVERSAL DE BASES   ")
         .border_style(Style::default().fg(Color::LightRed))
         .merge_borders(MergeStrategy::Exact);
 
     let middle_block_left = Block::bordered()
-        .title("ENTRADA")
+        .title("  ENTRADA  ")
         .border_style(Style::default().fg(Color::LightYellow))
         .merge_borders(MergeStrategy::Exact);
 
     let middle_block_right = Block::bordered()
-        .title("SAIDA")
+        .title("  SAIDA  ")
         .border_style(Style::default().fg(Color::LightGreen))
         .merge_borders(MergeStrategy::Exact);
 
@@ -110,6 +111,7 @@ fn draw(frame: &mut Frame, app: &App) {
     let right_inner = middle_block_right.inner(inner_layout[1]);
     let bottom_inner = bottom_right_block.inner(outer_layout[2]);
 
+    frame.render_widget(&up_block, up_inner);
     frame.render_widget(&middle_block_left, inner_layout[0]);
     frame.render_widget(&middle_block_right, inner_layout[1]);
 
@@ -172,7 +174,6 @@ fn draw_tabs(frame: &mut Frame, area: Rect, active_tab: Tabs) {
         spans.push(Span::styled(format!(" {} ", label), style));
         spans.push(Span::raw("  "));
     }
-
     let line = Paragraph::new(Line::from(spans)).alignment(Alignment::Center);
     frame.render_widget(line, area);
 }
@@ -217,7 +218,8 @@ fn draw_conversor(frame: &mut Frame, left_inner: Rect, right_inner: Rect) {
     ]);
     frame.render_widget(input, left_inner);
     // output
-    // TODO
+    let output = Paragraph::new("Output: 42");
+    frame.render_widget(output, right_inner);
 }
 
 // TODO alterar para uma lógica de verdade e não hardcoded
