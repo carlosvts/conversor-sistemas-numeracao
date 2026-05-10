@@ -19,7 +19,6 @@ pub enum ProcessingWarning {
 pub struct ConversionOptions {
     pub allow_prefix_detection: bool,
     pub allow_fractional_part: bool,
-    pub uppercase_output: bool,
     pub generate_trace: bool,
     pub max_fractional_digits: u8,
 }
@@ -29,7 +28,6 @@ impl Default for ConversionOptions {
         Self {
             allow_prefix_detection: true,
             allow_fractional_part: true,
-            uppercase_output: true,
             generate_trace: false,
             max_fractional_digits: 16,
         }
