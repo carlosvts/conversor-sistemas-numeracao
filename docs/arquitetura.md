@@ -55,7 +55,6 @@ classDiagram
     class ConversionOptions {
         +bool allow_prefix_detection
         +bool allow_fractional_part
-        +bool uppercase_output
         +bool generate_trace
         +u8 max_fractional_digits
     }
@@ -175,7 +174,6 @@ Campos:
 |------|------|--------|-----------|
 | `allow_prefix_detection` | `bool` | `true` | Quando ativo, o parser detecta prefixos como `0b` (binario), `0o` (octal) e `0x` (hexadecimal) e usa a base correspondente, ignorando `source_base_hint` caso haja conflito. |
 | `allow_fractional_part` | `bool` | `true` | Permite entrada com parte fracionaria separada por `.`. Se desativado e o usuario digitar um ponto decimal, o parser retorna `ParseError::FractionalInputDisabled`. |
-| `uppercase_output` | `bool` | `true` | Letras maiusculas no resultado para bases acima de 10, como `1F` em vez de `1f`. |
 | `generate_trace` | `bool` | `false` | Quando ativo, o processador preenche `ConversionResult.trace` com os passos formatados do algoritmo. Se desativado, `trace` e retornado como vetor vazio. |
 | `max_fractional_digits` | `u8` | `16` | Limite de casas fracionarias no resultado via multiplicacoes sucessivas. Quando atingido em resultado nao terminante, o processador adiciona `ProcessingWarning::FractionTruncated` nos avisos. |
 
