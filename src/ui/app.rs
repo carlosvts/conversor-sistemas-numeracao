@@ -1,9 +1,8 @@
-use color_eyre::Result;
-use ratatui::crossterm::event::{self, Event, KeyCode};
+use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::Alignment;
 use ratatui::style::Modifier;
 use ratatui::{
-    DefaultTerminal, Frame,
+    Frame,
     layout::{Constraint, Direction, Layout, Rect, Spacing},
     style::{Color, Style},
     symbols::merge::MergeStrategy,
@@ -12,9 +11,11 @@ use ratatui::{
 };
 use std::fs;
 
-#[repr(i32)] // representavel como i32
-#[derive(PartialEq, Eq, Clone, Copy)] // necessario para comparação com inteiros
-enum Tabs {
+// ─── Tabs ────────────────────────────────────────────────────────────────────
+
+#[repr(i32)]
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Tabs {
     Conversor = 1,
     Trace = 2,
     Quiz = 3,
@@ -22,79 +23,225 @@ enum Tabs {
     Max = 5,
 }
 
-// para incializar com zero
+// ─── Base ────────────────────────────────────────────────────────────────────
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum Base {
+    Auto,
+    Bin,
+    Oct,
+    Dec,
+    Hex,
+}
+
+impl Base {
+    pub fn label(&self) -> &str {
+        match self {
+            Base::Auto => "AUTO",
+            Base::Bin => "BIN",
+            Base::Oct => "OCT",
+            Base::Dec => "DEC",
+            Base::Hex => "HEX",
+        }
+    }
+
+    pub fn next(&self) -> Base {
+        match self {
+            Base::Auto => Base::Bin,
+            Base::Bin => Base::Oct,
+            Base::Oct => Base::Dec,
+            Base::Dec => Base::Hex,
+            Base::Hex => Base::Auto,
+        }
+    }
+
+    pub fn prev(&self) -> Base {
+        match self {
+            Base::Auto => Base::Hex,
+            Base::Bin => Base::Auto,
+            Base::Oct => Base::Bin,
+            Base::Dec => Base::Oct,
+            Base::Hex => Base::Dec,
+        }
+    }
+
+    // None = autodetect pelo prefixo no parser
+    pub fn to_hint(&self) -> Option<u8> {
+        match self {
+            Base::Auto => None,
+            Base::Bin => Some(2),
+            Base::Oct => Some(8),
+            Base::Dec => Some(10),
+            Base::Hex => Some(16),
+        }
+    }
+
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            Base::Auto | Base::Dec => 10,
+            Base::Bin => 2,
+            Base::Oct => 8,
+            Base::Hex => 16,
+        }
+    }
+
+    // essa funcao vive enquanto Base existir
+    pub fn all() -> &'static [Base] {
+        &[Base::Auto, Base::Bin, Base::Oct, Base::Dec, Base::Hex]
+    }
+}
+
+// ─── Foco do conversor ───────────────────────────────────────────────────────
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum ConversorFocus {
+    Input,
+    SourceBase,
+    TargetBase,
+}
+
+impl ConversorFocus {
+    pub fn next(&self) -> ConversorFocus {
+        match self {
+            ConversorFocus::Input => ConversorFocus::SourceBase,
+            ConversorFocus::SourceBase => ConversorFocus::TargetBase,
+            ConversorFocus::TargetBase => ConversorFocus::Input,
+        }
+    }
+}
+
+// ─── Estados ─────────────────────────────────────────────────────────────────
+
 #[derive(Default)]
-#[warn(dead_code)]
-struct TraceState {
-    valor: u64,
-    base_origem: u8,
-    base_destino: u8,
-    etapa_atual: usize,
-    passos: Vec<(u64, u64, u8)>,
-    bits: Vec<u8>,
+pub struct TraceState {
+    pub valor: u64,
+    pub base_origem: u8,
+    pub base_destino: u8,
+    pub etapa_atual: usize,
+    pub passos: Vec<(u64, u64, u8)>,
+    pub bits: Vec<u8>,
 }
 
-struct BatchState {
-    selected_file: usize,
+pub struct BatchState {
+    pub selected_file: usize,
 }
 
-struct App {
-    tab: Tabs,
+pub struct ConversorState {
+    pub input: String,
+    pub source_base: Base,
+    pub target_base: Base,
+    pub output: String,
+    pub error: Option<String>,
+    pub focus: ConversorFocus,
+}
+
+impl ConversorState {
+    pub fn new() -> Self {
+        Self {
+            input: String::new(),
+            source_base: Base::Auto,
+            target_base: Base::Bin,
+            output: String::new(),
+            error: None,
+            focus: ConversorFocus::Input,
+        }
+    }
+}
+
+// ─── App ─────────────────────────────────────────────────────────────────────
+
+pub struct App {
+    pub tab: Tabs,
     pub batch: BatchState,
+    pub conversor: ConversorState,
+    pub trace: TraceState,
 }
 
 impl App {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             tab: Tabs::Conversor,
             batch: BatchState { selected_file: 0 },
+            conversor: ConversorState::new(),
+            trace: TraceState::default(),
+        }
+    }
+
+    pub fn handle_key(&mut self, key: KeyCode) {
+        match key {
+            // troca abas — tem prioridade sobre tudo
+            KeyCode::Char('1') => self.tab = Tabs::Conversor,
+            KeyCode::Char('2') => self.tab = Tabs::Trace,
+            KeyCode::Char('3') => self.tab = Tabs::Quiz,
+            KeyCode::Char('4') => self.tab = Tabs::Batch,
+            KeyCode::Char('5') => self.tab = Tabs::Max,
+
+            // delega para o handler da aba ativa
+            key => match self.tab {
+                Tabs::Conversor => handle_conversor(&mut self.conversor, key),
+                Tabs::Batch => handle_batch(&mut self.batch, key),
+                _ => {}
+            },
         }
     }
 }
 
-fn main() -> Result<()> {
-    color_eyre::install()?;
-    let mut terminal: DefaultTerminal = ratatui::init();
-    let mut app = App::new();
-    loop {
-        terminal.draw(|frame| draw(frame, &app))?;
+// ─── Handlers de input ───────────────────────────────────────────────────────
 
-        if let Event::Key(key) = event::read()? {
-            match key.code {
-                // troca abas
-                KeyCode::Char('1') => app.tab = Tabs::Conversor,
-                KeyCode::Char('2') => app.tab = Tabs::Trace,
-                KeyCode::Char('3') => app.tab = Tabs::Quiz,
-                KeyCode::Char('4') => app.tab = Tabs::Batch,
-                KeyCode::Char('5') => app.tab = Tabs::Max,
-                KeyCode::Char('q') => break,
+fn handle_conversor(state: &mut ConversorState, key: KeyCode) {
+    match key {
+        KeyCode::Tab => state.focus = state.focus.next(),
 
-                // navegação batch
-                KeyCode::Down => {
-                    if app.tab == Tabs::Batch {
-                        app.batch.selected_file += 1;
-                    }
-                }
+        KeyCode::Char(c) if state.focus == ConversorFocus::Input => {
+            state.input.push(c);
+        }
 
-                KeyCode::Up => {
-                    if app.tab == Tabs::Batch {
-                        if app.batch.selected_file > 0 {
-                            app.batch.selected_file -= 1;
-                        }
-                    }
-                }
-                _ => {}
+        KeyCode::Right if state.focus == ConversorFocus::SourceBase => {
+            state.source_base = state.source_base.next();
+        }
+        KeyCode::Left if state.focus == ConversorFocus::SourceBase => {
+            state.source_base = state.source_base.prev();
+        }
+
+        KeyCode::Right if state.focus == ConversorFocus::TargetBase => {
+            state.target_base = state.target_base.next();
+        }
+        KeyCode::Left if state.focus == ConversorFocus::TargetBase => {
+            state.target_base = state.target_base.prev();
+        }
+
+        KeyCode::Backspace if state.focus == ConversorFocus::Input => {
+            state.input.pop();
+        }
+
+        // conversão — o main.rs chama o facade e escreve em state.output / state.error
+        // por isso Enter só limpa o erro aqui; o resultado vem de fora
+        KeyCode::Enter => {
+            state.error = None;
+        }
+
+        _ => {}
+    }
+}
+
+fn handle_batch(state: &mut BatchState, key: KeyCode) {
+    match key {
+        KeyCode::Down => state.selected_file += 1,
+        KeyCode::Up => {
+            if state.selected_file > 0 {
+                state.selected_file -= 1;
             }
         }
+        _ => {}
     }
-    ratatui::restore();
-    Ok(()) // "return 0"
 }
 
-fn draw(frame: &mut Frame, app: &App) {
-    let outer_layout = Layout::default()
+// ─── Draw principal ──────────────────────────────────────────────────────────
+
+pub fn draw(frame: &mut Frame, app: &App) {
+    let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(vec![
+        .constraints([
             Constraint::Length(5),
             Constraint::Fill(1),
             Constraint::Length(3),
@@ -102,260 +249,202 @@ fn draw(frame: &mut Frame, app: &App) {
         .spacing(Spacing::Overlap(1))
         .split(frame.area());
 
-    let inner_layout = Layout::default()
+    let inner = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(outer_layout[1]);
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(outer[1]);
 
-    // blocos
     let up_block = Block::bordered()
         .title("   CONVERSOR UNIVERSAL DE BASES   ")
         .border_style(Style::default().fg(Color::LightRed))
         .merge_borders(MergeStrategy::Exact);
 
-    let middle_block_left = Block::bordered()
+    let left_block = Block::bordered()
         .title("  ENTRADA  ")
         .border_style(Style::default().fg(Color::LightYellow))
         .merge_borders(MergeStrategy::Exact);
 
-    let middle_block_right = Block::bordered()
+    let right_block = Block::bordered()
         .title("  SAIDA  ")
         .border_style(Style::default().fg(Color::LightGreen))
         .merge_borders(MergeStrategy::Exact);
 
-    let bottom_right_block = Block::bordered()
+    let bottom_block = Block::bordered()
         .title("Info")
         .border_style(Style::default().fg(Color::LightBlue))
         .merge_borders(MergeStrategy::Exact);
 
-    let up_inner = up_block.inner(outer_layout[0]);
-    let left_inner = middle_block_left.inner(inner_layout[0]);
-    let right_inner = middle_block_right.inner(inner_layout[1]);
-    let bottom_inner = bottom_right_block.inner(outer_layout[2]);
+    let up_inner = up_block.inner(outer[0]);
+    let left_inner = left_block.inner(inner[0]);
+    let right_inner = right_block.inner(inner[1]);
+    let bottom_inner = bottom_block.inner(outer[2]);
 
-    frame.render_widget(&up_block, up_inner);
-    frame.render_widget(&middle_block_left, inner_layout[0]);
-    frame.render_widget(&middle_block_right, inner_layout[1]);
+    frame.render_widget(&up_block, outer[0]);
+    frame.render_widget(&left_block, inner[0]);
+    frame.render_widget(&right_block, inner[1]);
 
-    // menu em cima
     draw_tabs(frame, up_inner, app.tab);
 
-    // aba do meio
     match app.tab {
-        Tabs::Conversor => draw_conversor(frame, left_inner, right_inner),
-        Tabs::Trace => {
-            let tracestate = TraceState::default();
-            draw_trace(frame, left_inner, right_inner, &tracestate)
-        }
-        //Tabs::Quiz => draw_quiz(
-        //    frame,
-        //    middle_block_left,
-        //    middle_block_right,
-        //    left_inner,
-        //    right_inner,
-        //),
-        Tabs::Batch => draw_batch(frame, left_inner, right_inner, app),
-        //Tabs::Max => draw_max(
-        //    frame,
-        //    middle_block_right,
-        //    middle_block_left,
-        //    left_inner,
-        //    right_inner,
-        //),
+        Tabs::Conversor => draw_conversor(frame, left_inner, right_inner, &app.conversor),
+        Tabs::Trace => draw_trace(frame, left_inner, right_inner, &app.trace),
+        Tabs::Batch => draw_batch(frame, left_inner, right_inner, &app.batch),
         _ => {}
     }
 
-    // menu de baixo
     draw_statusbar(frame, bottom_inner);
 }
 
+// ─── Widgets ─────────────────────────────────────────────────────────────────
+
 fn draw_tabs(frame: &mut Frame, area: Rect, active_tab: Tabs) {
-    let tabs = vec![
+    let tabs = [
         (1, "conversor"),
         (2, "trace"),
         (3, "quiz"),
         (4, "batch"),
         (5, "max"),
     ];
+
     let mut spans: Vec<Span> = Vec::new();
-    for (num, mode) in tabs {
-        let label = format!("[{}] {}", num, mode);
-        let style;
-        // copia do enum
-        if num == active_tab as i32 {
-            style = Style::default().add_modifier(Modifier::REVERSED);
+    for (num, label) in tabs {
+        let style = if num == active_tab as i32 {
+            Style::default().add_modifier(Modifier::REVERSED)
         } else {
-            style = Style::default().fg(Color::DarkGray);
-        }
-        spans.push(Span::styled(format!(" {} ", label), style));
+            Style::default().fg(Color::DarkGray)
+        };
+        spans.push(Span::styled(format!(" [{}] {} ", num, label), style));
         spans.push(Span::raw("  "));
     }
-    let line = Paragraph::new(Line::from(spans)).alignment(Alignment::Center);
-    frame.render_widget(line, area);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(spans)).alignment(Alignment::Center),
+        area,
+    );
 }
 
-fn draw_statusbar(frame: &mut Frame, bottom_inner: Rect) {
-    // rodapé
-    let info = Paragraph::new(Line::from(vec![
-        Span::raw(" Carlos Vinícius Teixeira de Souza │  Introdução à Computação  │  João Vitor Pereira Gomes "),
-    ]))
-    .alignment(Alignment::Center)
-    .style(Style::default().fg(Color::LightRed));
-    frame.render_widget(info, bottom_inner);
+fn draw_statusbar(frame: &mut Frame, area: Rect) {
+    frame.render_widget(
+        Paragraph::new(" Carlos Vinícius Teixeira de Souza │  Introdução à Computação  │  João Vitor Pereira Gomes ")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::LightRed)),
+        area,
+    );
 }
 
-fn draw_conversor(frame: &mut Frame, left_inner: Rect, right_inner: Rect) {
-    // display
-    // input
+fn base_selector_spans<'a>(current: Base, focus: bool) -> Line<'a> {
+    let mut spans: Vec<Span> = Vec::new();
+    for &base in Base::all() {
+        let style = if base == current && focus {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::LightYellow)
+                .add_modifier(Modifier::BOLD)
+        } else if base == current {
+            Style::default().fg(Color::LightYellow)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        spans.push(Span::styled(format!(" {} ", base.label()), style));
+    }
+    Line::from(spans)
+}
+
+fn draw_conversor(frame: &mut Frame, left: Rect, right: Rect, state: &ConversorState) {
+    let cursor = if state.focus == ConversorFocus::Input {
+        "█"
+    } else {
+        ""
+    };
+
+    let source_focused = state.focus == ConversorFocus::SourceBase;
+    let target_focused = state.focus == ConversorFocus::TargetBase;
+
+    let label_style = Style::default().fg(Color::DarkGray);
+    let hint_style = Style::default()
+        .fg(Color::DarkGray)
+        .add_modifier(Modifier::DIM);
+
     let input = Paragraph::new(vec![
         Line::from(vec![
-            Span::styled("Valor : ", Style::default().fg(Color::DarkGray)),
-            Span::styled("42", Style::default().fg(Color::White)),
-            Span::styled("█", Style::default().fg(Color::LightYellow)), // cursor
+            Span::styled("Valor : ", label_style),
+            Span::styled(state.input.as_str(), Style::default().fg(Color::White)),
+            Span::styled(cursor, Style::default().fg(Color::LightYellow)),
         ]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("De    : ", Style::default().fg(Color::DarkGray)),
-            Span::styled("[DEC]", Style::default().fg(Color::LightYellow)),
-        ]),
-        Line::from(vec![
-            Span::styled("Para  : ", Style::default().fg(Color::DarkGray)),
-            Span::styled("[BIN]", Style::default().fg(Color::LightYellow)),
-        ]),
+        Line::from(vec![Span::styled("De    : ", label_style)]),
+        base_selector_spans(state.source_base, source_focused),
+        Line::from(""),
+        Line::from(vec![Span::styled("Para  : ", label_style)]),
+        base_selector_spans(state.target_base, target_focused),
         Line::from(""),
         Line::from(Span::styled(
             "[enter] converter",
             Style::default().fg(Color::LightGreen),
         )),
-        Line::from(Span::styled(
-            "[s] passo a passo",
-            Style::default().fg(Color::DarkGray),
-        )),
-    ]);
-    frame.render_widget(input, left_inner);
-    // output
-    let output = Paragraph::new("Output: 42");
-    frame.render_widget(output, right_inner);
-}
-
-// TODO alterar para uma lógica de verdade e não hardcoded
-fn draw_trace(frame: &mut Frame, left_inner: Rect, right_inner: Rect, tracestate: &TraceState) {
-    let left = Paragraph::new(vec![
-        Line::from(Span::styled(
-            "42 ÷ 2 = 21  r 0",
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(Span::styled(
-            "21 ÷ 2 = 10  r 1",
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(vec![
-            Span::styled("10 ÷ 2 =  5  r ", Style::default().fg(Color::DarkGray)),
-            Span::styled("0", Style::default().fg(Color::LightMagenta)),
-            Span::styled("  ←", Style::default().fg(Color::LightCyan)),
-        ]),
-        Line::from(Span::styled(
-            " 5 ÷ 2 =  ?  r ?",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::DIM),
-        )),
-        Line::from(Span::styled(
-            " 2 ÷ 2 =  ?  r ?",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::DIM),
-        )),
-        Line::from(Span::styled(
-            " 1 ÷ 2 =  ?  r ?",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::DIM),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "[←] anterior  [→] próxima  [r] reiniciar",
-            Style::default().fg(Color::DarkGray),
-        )),
+        Line::from(Span::styled("[tab] navegar  [← →] trocar base", hint_style)),
     ]);
 
-    let right = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled("pos:  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                " 5   4   3   2   1   0",
+    frame.render_widget(input, left);
+
+    let output_lines = match &state.error {
+        Some(err) => vec![
+            Line::from(Span::styled("Erro:", Style::default().fg(Color::LightRed))),
+            Line::from(""),
+            Line::from(Span::styled(err.as_str(), Style::default().fg(Color::Red))),
+        ],
+        None => vec![
+            Line::from(Span::styled(
+                "Output:",
                 Style::default().fg(Color::DarkGray),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("      ", Style::default().fg(Color::DarkGray)),
-            Span::styled("[1] ", Style::default().fg(Color::LightGreen)),
-            Span::styled("[0] ", Style::default().fg(Color::DarkGray)),
-            Span::styled("[1] ", Style::default().fg(Color::LightGreen)),
-            Span::styled(
-                "[?] ",
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::DIM),
-            ),
-            Span::styled(
-                "[?] ",
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::DIM),
-            ),
-            Span::styled(
-                "[?] ",
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::DIM),
-            ),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "somatório posicional:",
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(vec![
-            Span::styled("1×2⁵", Style::default().fg(Color::LightGreen)),
-            Span::styled(" + ", Style::default().fg(Color::DarkGray)),
-            Span::styled("0×2⁴", Style::default().fg(Color::DarkGray)),
-            Span::styled(" + ", Style::default().fg(Color::DarkGray)),
-            Span::styled("1×2³", Style::default().fg(Color::LightGreen)),
-            Span::styled(" + ...", Style::default().fg(Color::DarkGray)),
-        ]),
-        Line::from(vec![Span::styled(
-            "= 32 + 0 + 8 + ...",
-            Style::default().fg(Color::DarkGray),
-        )]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "etapa: 3 / 6",
-            Style::default().fg(Color::DarkGray),
-        )),
-    ]);
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                state.output.as_str(),
+                Style::default().fg(Color::LightGreen),
+            )),
+        ],
+    };
 
-    frame.render_widget(left, left_inner);
-    frame.render_widget(right, right_inner);
+    frame.render_widget(Paragraph::new(output_lines), right);
 }
 
-fn draw_batch(frame: &mut Frame, left_inner: Rect, right_inner: Rect, app: &App) {
-    // LEITURA DOS CSV
+fn draw_trace(frame: &mut Frame, left: Rect, right: Rect, state: &TraceState) {
+    // ainda sem dados reais — renderiza vazio até o TraceState ser preenchido
+    let left_content = if state.passos.is_empty() {
+        Paragraph::new(Span::styled(
+            "Nenhuma conversão em trace ainda.",
+            Style::default().fg(Color::DarkGray),
+        ))
+    } else {
+        // TODO: renderizar state.passos quando o trace for implementado
+        Paragraph::new(Span::styled("...", Style::default().fg(Color::DarkGray)))
+    };
+
+    let right_content = if state.bits.is_empty() {
+        Paragraph::new(Span::styled(
+            "Execute uma conversão no modo trace.",
+            Style::default().fg(Color::DarkGray),
+        ))
+    } else {
+        Paragraph::new(Span::styled("...", Style::default().fg(Color::DarkGray)))
+    };
+
+    frame.render_widget(left_content, left);
+    frame.render_widget(right_content, right);
+}
+
+fn draw_batch(frame: &mut Frame, left: Rect, right: Rect, state: &BatchState) {
     let mut entries: Vec<String> = Vec::new();
 
-    if let Ok(read_dir) = fs::read_dir("./data") {
-        for entry in read_dir {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-
-                // aceita apenas arquivos .csv
-                if path.is_file() {
-                    if let Some(extension) = path.extension() {
-                        let ext = extension.to_string_lossy().to_lowercase();
-                        if ext == "csv" {
-                            if let Some(name) = path.file_name() {
-                                entries.push(name.to_string_lossy().to_string());
-                            }
+    if let Ok(dir) = fs::read_dir("./data") {
+        for entry in dir.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext.to_string_lossy().to_lowercase() == "csv" {
+                        if let Some(name) = path.file_name() {
+                            entries.push(name.to_string_lossy().to_string());
                         }
                     }
                 }
@@ -363,72 +452,63 @@ fn draw_batch(frame: &mut Frame, left_inner: Rect, right_inner: Rect, app: &App)
         }
     }
 
-    // seleção atual
-    let mut selected_index: usize = app.batch.selected_file;
+    let selected = if entries.is_empty() {
+        0
+    } else {
+        state.selected_file.min(entries.len() - 1)
+    };
 
-    // impede overflow
-    if selected_index >= entries.len() && entries.len() > 0 {
-        selected_index = entries.len() - 1;
-    }
+    let items: Vec<ListItem> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let style = if i == selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::LightRed)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+            ListItem::new(Line::from(Span::styled(format!(" {}", name), style)))
+        })
+        .collect();
 
-    // =========================
-    // LISTA DE ARQUIVOS
-    // =========================
-
-    let mut items: Vec<ListItem> = Vec::new();
-
-    for i in 0..entries.len() {
-        let style;
-
-        if i == selected_index {
-            style = Style::default()
-                .fg(Color::Black)
-                .bg(Color::LightRed)
-                .add_modifier(Modifier::BOLD);
-        } else {
-            style = Style::default().fg(Color::Gray);
-        }
-
-        let line = Line::from(vec![Span::styled(format!(" {}", entries[i]), style)]);
-
-        items.push(ListItem::new(line));
-    }
-
-    let file_list = List::new(items).block(
-        Block::default()
-            .title(" Arquivos CSV ")
-            .borders(Borders::NONE),
+    frame.render_widget(
+        List::new(items).block(
+            Block::default()
+                .title(" Arquivos CSV ")
+                .borders(Borders::NONE),
+        ),
+        left,
     );
 
-    frame.render_widget(file_list, left_inner);
+    let mut preview: Vec<Line> = vec![
+        Line::from("Arquivo selecionado:"),
+        Line::from(""),
+        Line::from(format!("Quantidade de arquivos: {}", entries.len())),
+        Line::from(""),
+    ];
 
-    // PREVIEW
-    let mut preview_lines: Vec<Line> = Vec::new();
-
-    preview_lines.push(Line::from("Arquivo selecionado:"));
-    preview_lines.push(Line::from(""));
-    preview_lines.push(Line::from(format!(
-        "Quantidade de arquivos {}",
-        entries.len()
-    )));
-    if entries.len() > 0 {
-        preview_lines.push(Line::from(vec![Span::styled(
-            &entries[selected_index],
+    if entries.is_empty() {
+        preview.push(Line::from(Span::styled(
+            "Nenhum arquivo CSV encontrado",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        preview.push(Line::from(Span::styled(
+            entries[selected].as_str(),
             Style::default()
                 .fg(Color::LightGreen)
                 .add_modifier(Modifier::BOLD),
-        )]));
-
-        preview_lines.push(Line::from(""));
-        preview_lines.push(Line::from("[enter] converter lote"));
-    } else {
-        preview_lines.push(Line::from(vec![Span::styled(
-            "    Nenhum arquivo CSV encontrado",
-            Style::default().fg(Color::DarkGray),
-        )]));
+        )));
+        preview.push(Line::from(""));
+        preview.push(Line::from("[enter] converter lote"));
     }
 
-    let preview = Paragraph::new(preview_lines);
+    frame.render_widget(Paragraph::new(preview), right);
+}
 
-    frame.render_widget(preview, right_inner);
+fn main() {
+    println!("Use cargo run conversor-sistemas-numeracao");
 }
