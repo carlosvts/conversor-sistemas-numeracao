@@ -50,10 +50,8 @@ fn resolve_source_base<'a>(
     }
 }
 
-const VALID_BASES: &[u8] = &[2, 8, 10, 16];
-
 fn validate_base(base: u8) -> Result<(), ParseError> {
-    if VALID_BASES.contains(&base) {
+    if base >= 2 && base <= 36 {
         Ok(())
     } else {
         Err(ParseError::InvalidBase(base))
@@ -62,14 +60,12 @@ fn validate_base(base: u8) -> Result<(), ParseError> {
 
 fn validate_digits(digits: &[char], base: u8) -> Result<(), ParseError> {
     for &c in digits {
-        let valid = match base {
-            2 => matches!(c, '0' | '1'),
-            8 => matches!(c, '0'..='7'),
-            10 => c.is_ascii_digit(),
-            16 => c.is_ascii_hexdigit(),
-            _ => false,
+        let value: u8 = match c {
+            '0'..='9' => c as u8 - b'0',
+            'A'..='Z' => c as u8 - b'A' + 10,
+            _ => return Err(ParseError::InvalidDigit { digit: c, base }),
         };
-        if !valid {
+        if value >= base {
             return Err(ParseError::InvalidDigit { digit: c, base });
         }
     }
