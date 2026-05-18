@@ -1,4 +1,4 @@
-use super::dto::{ConversionResult, RawConversionInput, RawMaximumInput};
+use super::dto::{ConversionResult, MaximumValueResult, RawConversionInput, RawMaximumInput};
 use super::errors::FacadeError;
 use super::parser::{ConversionParser, ConversionRequestParser};
 use super::processor::{ConversionProcessor, NumericProcessingService};
@@ -22,6 +22,7 @@ impl ConversionFacade<ConversionParser, ConversionProcessor> {
     }
 }
 
+// generico P de parser e generico S de service
 impl<P, S> ConversionFacade<P, S>
 where
     P: ConversionRequestParser,
@@ -31,19 +32,26 @@ where
         Self { parser, processor }
     }
 
-    pub fn parser(&self) -> &P {
-        &self.parser
+    pub fn request(&self, input: RawConversionInput) -> Result<ConversionResult, FacadeError> {
+        let parsed = self
+            .parser
+            .parse_conversion(input)
+            .map_err(FacadeError::Parse)?;
+        self.processor
+            .convert(parsed)
+            .map_err(FacadeError::Processing)
     }
 
-    pub fn processor(&self) -> &S {
-        &self.processor
-    }
-
-    pub fn request(&self, _input: RawConversionInput) -> Result<ConversionResult, FacadeError> {
-        todo!("request skeleton only")
-    }
-
-    pub fn request_maximum(&self, _input: RawMaximumInput) -> Result<super::dto::MaximumValueResult, FacadeError> {
-        todo!("request_maximum skeleton only")
+    pub fn request_maximum(
+        &self,
+        input: RawMaximumInput,
+    ) -> Result<MaximumValueResult, FacadeError> {
+        let parsed = self
+            .parser
+            .parse_maximum_value(input)
+            .map_err(FacadeError::Parse)?;
+        self.processor
+            .compute_maximum(parsed)
+            .map_err(FacadeError::Processing)
     }
 }
