@@ -35,11 +35,25 @@ fn main() -> Result<()> {
                     raw_value: app.conversor.input.clone(),
                     source_base_hint: app.conversor.source_base.to_hint(),
                     target_base: app.conversor.target_base.to_u8(),
-                    options: ConversionOptions::default(),
+                    options: ConversionOptions {
+                        generate_trace: true,
+                        ..Default::default()
+                    },
                 });
 
                 match result {
-                    Ok(r) => app.conversor.output = r.output_value,
+                    Ok(r) => {
+                        // clones para evitar borrowing, ja que usamos mais de uma vez
+                        app.conversor.output = r.output_value.clone();
+                        app.trace.valor_original = app.conversor.input.clone();
+                        app.trace.base_origem =
+                            app.conversor.source_base.to_hint().unwrap_or(r.source_base);
+                        app.trace.base_destino = app.conversor.target_base.to_u8();
+                        app.trace.resultado = r.output_value.clone();
+
+                        app.trace.passos = r.trace.clone();
+                        app.trace.passo_atual = 0;
+                    }
                     Err(_) => {
                         // fallback: tenta converter para decimal
                         let fallback = facade.request(RawConversionInput {

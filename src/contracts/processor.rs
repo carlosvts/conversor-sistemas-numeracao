@@ -207,9 +207,7 @@ fn base_to_decimal_value(
     for (i, &c) in digits.iter().enumerate() {
         let exp = (len - 1 - i) as u32;
         let digit_val = digit_to_value(c);
-        let place_value = base
-            .checked_pow(exp)
-            .ok_or(ProcessingError::Overflow)?;
+        let place_value = base.checked_pow(exp).ok_or(ProcessingError::Overflow)?;
         let contribution = digit_val
             .checked_mul(place_value)
             .ok_or(ProcessingError::Overflow)?;
